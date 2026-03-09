@@ -3,16 +3,37 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>3D Bean - Gravity Edition</title>
+    <title>3D Bean</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #111; touch-action: none; font-family: sans-serif; }
+        body { margin: 0; overflow: hidden; background: #111; touch-action: none; font-family: 'Courier New', Courier, monospace; }
         #ui-layer { position: absolute; bottom: 40px; width: 100%; display: flex; justify-content: space-between; padding: 0 40px; box-sizing: border-box; pointer-events: none; }
         #joystick { width: 100px; height: 100px; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.3); border-radius: 50%; display: flex; justify-content: center; align-items: center; pointer-events: auto; }
         #stick { width: 40px; height: 40px; background: white; border-radius: 50%; opacity: 0.6; }
         #jump-btn { width: 80px; height: 80px; background: rgba(255,255,255,0.2); border: 2px solid white; border-radius: 50%; display: flex; justify-content: center; align-items: center; color: white; font-weight: bold; pointer-events: auto; user-select: none; -webkit-tap-highlight-color: transparent; }
+        
+        /* Performance Monitor Styling */
+        #perf-monitor {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: #00ff00;
+            padding: 8px;
+            font-size: 12px;
+            border-radius: 4px;
+            pointer-events: none;
+            z-index: 100;
+            border: 1px solid #333;
+        }
     </style>
 </head>
 <body>
+    <div id="perf-monitor">
+        FPS: --<br>
+        MS: --<br>
+        Draw Calls: --
+    </div>
+
     <div id="ui-layer">
         <div id="joystick"><div id="stick"></div></div>
         <div id="jump-btn">JUMP</div>
@@ -31,13 +52,17 @@
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
+        // --- PERFORMANCE TRACKING VARIABLES ---
+        const perfDisplay = document.getElementById('perf-monitor');
+        let lastTime = performance.now();
+        let frames = 0;
+
         // --- CONSTANTS & PHYSICS ---
         const GRAVITY = -0.015;
         const JUMP_FORCE = 0.3;
         const GROUND_Y = 0.8;
         const MOVE_SPEED = 0.15;
 
-        // Optimization: Pre-allocate vectors to avoid creating new objects every frame
         const _forward = new THREE.Vector3();
         const _right = new THREE.Vector3();
         const _moveVec = new THREE.Vector3();
@@ -51,7 +76,7 @@
 
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Optimization
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         document.body.appendChild(renderer.domElement);
 
         scene.add(new THREE.AmbientLight(0xffffff, 0.8));
@@ -64,7 +89,7 @@
         // --- THE BEAN ---
         const bean = new THREE.Group();
         const body = new THREE.Mesh(
-            new THREE.CapsuleGeometry(0.4, 0.8, 4, 12), // Lower segments for optimization
+            new THREE.CapsuleGeometry(0.4, 0.8, 4, 12),
             new THREE.MeshStandardMaterial({ color: 0xf1c40f })
         );
         bean.add(body);
@@ -82,7 +107,6 @@
         let velocityY = 0;
         let isGrounded = true;
 
-        // --- CONTROLS ---
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
         controls.minDistance = 3;
@@ -96,7 +120,6 @@
         });
         window.addEventListener('keyup', (e) => keys[e.code] = false);
 
-        // Mobile Inputs
         let moveX = 0, moveZ = 0;
         const stick = document.getElementById('stick');
         const joystick = document.getElementById('joystick');
@@ -131,15 +154,28 @@
 
         // --- MAIN LOOP ---
         function animate() {
+            const time = performance.now();
+            frames++;
+
+            // Update Metrics every second
+            if (time >= lastTime + 1000) {
+                const fps = Math.round((frames * 1000) / (time - lastTime));
+                const ms = ((time - lastTime) / frames).toFixed(2);
+                const drawCalls = renderer.info.render.calls;
+                
+                perfDisplay.innerHTML = `FPS: ${fps}<br>MS: ${ms}<br>Draw Calls: ${drawCalls}`;
+                
+                frames = 0;
+                lastTime = time;
+            }
+
             requestAnimationFrame(animate);
 
-            // 1. Directional Logic
             camera.getWorldDirection(_forward);
             _forward.y = 0;
             _forward.normalize();
             _right.crossVectors(_forward, _up);
 
-            // 2. Movement Input
             let inputX = moveX, inputZ = moveZ;
             if (keys['KeyW'] || keys['ArrowUp']) inputZ = -1;
             if (keys['KeyS'] || keys['ArrowDown']) inputZ = 1;
@@ -150,7 +186,6 @@
             _moveVec.addScaledVector(_forward, -inputZ * MOVE_SPEED);
             _moveVec.addScaledVector(_right, inputX * MOVE_SPEED);
 
-            // 3. Physics (Gravity)
             velocityY += GRAVITY;
             bean.position.y += velocityY;
 
@@ -160,14 +195,12 @@
                 isGrounded = true;
             }
 
-            // 4. Apply Movement & Rotation
             bean.position.add(_moveVec);
             if (_moveVec.length() > 0.01) {
                 const targetRot = Math.atan2(_moveVec.x, _moveVec.z);
                 bean.rotation.y = THREE.MathUtils.lerp(bean.rotation.y, targetRot, 0.15);
             }
 
-            // 5. Camera Follow
             camera.position.add(_moveVec);
             controls.target.copy(bean.position);
             controls.update();
