@@ -91,6 +91,13 @@
         mirrorWall.camera.far = 2500;
         scene.add(mirrorWall);
 
+        // Mirror Frame
+        const frameMat = new THREE.MeshStandardMaterial({ color: 0x444444, metalness: 1, roughness: 0.2 });
+        const frameGeo = new THREE.BoxGeometry(52, 32, 1);
+        const frame = new THREE.Mesh(frameGeo, frameMat);
+        frame.position.set(0, 15, -45.6);
+        scene.add(frame);
+
         const floorReflector = new Reflector(new THREE.PlaneGeometry(3000, 3000), {
             clipBias: 0.003,
             textureWidth: window.innerWidth,
@@ -108,6 +115,9 @@
 
         // --- THE BEAN 🔥🔥🔥 ---
         const beanGroup = new THREE.Group();
+        const visualGroup = new THREE.Group(); // Sub-group for leaning
+        beanGroup.add(visualGroup);
+
         const body = new THREE.Mesh(
             new THREE.CapsuleGeometry(1.2, 2.0, 32, 32),
             new THREE.MeshPhysicalMaterial({ 
@@ -124,7 +134,7 @@
         eyeL.position.set(0.5, 1.3, 1.0);
         const eyeR = eyeL.clone(); eyeR.position.set(-0.5, 1.3, 1.0);
 
-        beanGroup.add(body, eyeL, eyeR);
+        visualGroup.add(body, eyeL, eyeR);
         beanGroup.position.y = GROUND_Y;
         scene.add(beanGroup);
 
@@ -170,6 +180,7 @@
         };
 
         const curVel = new THREE.Vector3(), tarVel = new THREE.Vector3();
+        let leanAmount = 0;
 
         function animate() {
             const dt = Math.min(clock.getDelta(), 0.05);
@@ -186,6 +197,13 @@
             if (keys['KeyA']) inX = -1; if (keys['KeyD']) inX = 1;
 
             tarVel.set(0, 0, 0).addScaledVector(camF, -inZ * MOVE_SPEED).addScaledVector(camR, inX * MOVE_SPEED);
+            
+            // Leaning Logic
+            const horizontalSpeed = curVel.length();
+            const targetLean = (horizontalSpeed / MOVE_SPEED) * 0.25;
+            leanAmount = THREE.MathUtils.lerp(leanAmount, targetLean, 10 * dt);
+            visualGroup.rotation.x = leanAmount;
+
             curVel.lerp(tarVel, 0.15);
             if (!joystickActive && Object.keys(keys).every(k => !keys[k])) curVel.multiplyScalar(FRICTION);
 
